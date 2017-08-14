@@ -427,7 +427,7 @@ class Tree:
     def add_parents(self, fid):
         father, mother = self.indi[fid].get_parents(self.fs)
         if father or mother:
-            tree.add_trio(father, mother, fid)
+            self.add_trio(father, mother, fid)
         return filter(None, (father, mother))
 
     # retrieve and add spouse relationships
@@ -445,7 +445,7 @@ class Tree:
     # retrieve and add children relationships
     def add_children(self, fid):
         children = list()
-        rels = tree.indi[fid].get_children(self.fs)
+        rels = self.indi[fid].get_children(self.fs)
         if rels:
             for father, mother, child in rels:
                 self.add_trio(father, mother, child)
@@ -473,48 +473,127 @@ class Tree:
         for husb, wife in sorted(self.fam, key = lambda x: self.fam.__getitem__(x).num):
             self.fam[(husb, wife)].print(file)
         file.write('0 TRLR\n')
+        
+class Defaults:
+    def __init__(self):
+        self.num_gen_ascend = 4
+        self.num_gen_descend = 0
+        self.add_spouses_couples_info = False
+        self.verbose = False
+        self.timeout_seconds = 60
+        self.gedcom_output_file = sys.stdout
+        self.log_output_file = sys.stderr
+        
+class CLI:
+    def __init__(self):
+        self.defaults = Defaults()
+        self.create_parser()
+        self.extract_cli_arguments()
+        self.get_username()
+        self.get_password()
+        self.store_run_parameters()
+        
+    def create_parser(self):
+        self.parser = argparse.ArgumentParser(description = 
+            'Retrieve GEDCOM data from FamilySearch Tree (4 Jul 2016)', 
+            add_help = False, 
+            usage = 'getmyancestors.py -u username -p password [options]')
+        self.parser.add_argument('-u', metavar = '<STR>', type = str, 
+                            help = 'FamilySearch username')
+        self.parser.add_argument('-p', metavar = '<STR>', type = str, 
+                            help = 'FamilySearch password')
+        self.parser.add_argument('-i', metavar = '<STR>', nargs='+', 
+                            type = str, 
+                            help = ('List of individual FamilySearch IDs for '
+                                    'whom to retrieve ancestors'))
+        self.parser.add_argument('-a', metavar = '<INT>', type = int, 
+                            default = self.defaults.num_gen_ascend, 
+                            help = 'Number of generations to ascend [4]')
+        self.parser.add_argument('-d', metavar = '<INT>', type = int, 
+                            default = self.defaults.num_gen_descend, 
+                            help = 'Number of generations to descend [0]')
+        self.parser.add_argument('-m', action = "store_true", 
+                            default = self.defaults.add_spouses_couples_info, 
+                            help = ('Add spouses and '
+                                    'couples information [False]'))
+        self.parser.add_argument("-v", action = "store_true", 
+                            default = self.defaults.verbose, 
+                            help = "Increase output verbosity [False]")
+        self.parser.add_argument('-t', metavar = '<INT>', type = int, 
+                            default = self.defaults.timeout_seconds, 
+                            help = 'Timeout in seconds [60]')
+        try:
+            self.parser.add_argument('-o', metavar = '<FILE>', 
+                type = argparse.FileType('w', encoding = 'UTF-8'), 
+                default = self.defaults.gedcom_output_file, 
+                help = 'output GEDCOM file [stdout]')
+            self.parser.add_argument('-l', metavar = '<FILE>', 
+                type = argparse.FileType('w', encoding = 'UTF-8'), 
+                default = self.defaults.log_output_file, 
+                help = 'output log file [stderr]')
+        except TypeError:
+            sys.stderr.write('Python >= 3.4 is required to run this script\n')
+            sys.stderr.write(('(see https://docs.python.org/3/'
+                              'whatsnew/3.4.html#argparse)\n'))
+            exit(2)
+            
+    def extract_cli_arguments(self):
+        # extract arguments from the command line
+        try:
+            self.parser.error = self.parser.exit
+            self.args = self.parser.parse_args()
+        except SystemExit:
+            self.parser.print_help()
+            exit(2)
+            
+    def get_username(self):
+        if self.args.u:
+            self.username = self.args.u
+        else:
+            self.username = input("Enter FamilySearch username: ")
+            
+    def get_password(self):
+        if self.args.p:
+            self.password = self.args.p
+        else:
+            self.password = getpass.getpass("Enter FamilySearch password: ")
+            
+    def store_run_parameters(self):
+        self.run_parameters = {}
+        self.run_parameters['starting_individuals'] = self.args.i
+        self.run_parameters['num_gen_ascend'] = self.args.a
+        self.run_parameters['num_gen_descend'] = self.args.d
+        self.run_parameters['add_spouses_couples_info'] = self.args.m
+        self.run_parameters['verbose'] = self.args.v
+        self.run_parameters['timeout_seconds'] = self.args.t
+        self.run_parameters['gedcom_output_file'] = self.args.o
+        self.run_parameters['log_output_file'] = self.args.l
+        self.run_parameters['username'] = self.username
+        self.run_parameters['password'] = self.password
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description = 'Retrieve GEDCOM data from FamilySearch Tree (4 Jul 2016)', add_help = False, usage = 'getmyancestors.py -u username -p password [options]')
-    parser.add_argument('-u', metavar = '<STR>', type = str, help = 'FamilySearch username')
-    parser.add_argument('-p', metavar = '<STR>', type = str, help = 'FamilySearch password')
-    parser.add_argument('-i', metavar = '<STR>', nargs='+', type = str, help = 'List of individual FamilySearch IDs for whom to retrieve ancestors')
-    parser.add_argument('-a', metavar = '<INT>', type = int, default = 4, help = 'Number of generations to ascend [4]')
-    parser.add_argument('-d', metavar = '<INT>', type = int, default = 0, help = 'Number of generations to descend [0]')
-    parser.add_argument('-m', action = "store_true", default = False, help = 'Add spouses and couples information [False]')
-    parser.add_argument("-v", action = "store_true", default = False, help = "Increase output verbosity [False]")
-    parser.add_argument('-t', metavar = '<INT>', type = int, default = 60, help = 'Timeout in seconds [60]')
-    try:
-        parser.add_argument('-o', metavar = '<FILE>', type = argparse.FileType('w', encoding = 'UTF-8'), default = sys.stdout, help = 'output GEDCOM file [stdout]')
-        parser.add_argument('-l', metavar = '<FILE>', type = argparse.FileType('w', encoding = 'UTF-8'), default = sys.stderr, help = 'output log file [stderr]')
-    except TypeError:
-        sys.stderr.write('Python >= 3.4 is required to run this script\n')
-        sys.stderr.write('(see https://docs.python.org/3/whatsnew/3.4.html#argparse)\n')
-        exit(2)
-    
-    # extract arguments from the command line
-    try:
-        parser.error = parser.exit
-        args = parser.parse_args()
-    except SystemExit:
-        parser.print_help()
-        exit(2)
+    def get_run_parameters(self):
+        return self.run_parameters
 
-    username = args.u if args.u else input("Enter FamilySearch username: ")
-    password = args.p if args.p else getpass.getpass("Enter FamilySearch password: ")
-    
+def main():
+    cli = CLI()
+    rps = cli.get_run_parameters()
     # initialize a FamilySearch session and a family tree object
-    fs = Session(username, password, args.v, args.l, args.t)
+    fs = Session(rps['username'], rps['password'], 
+                 rps['verbose'], rps['log_output_file'], 
+                 rps['timeout_seconds'])
     tree = Tree(fs)
 
     # add list of starting individuals to the family tree
-    todo = set(args.i if args.i else [fs.get_userid()])
+    if rps['starting_individuals']:
+        todo = set(rps['starting_individuals'])
+    else:
+        todo = set([fs.get_userid()])
     for fid in todo:
         tree.add_indi(fid)
 
     # download ancestors
     done = set()
-    for i in range(args.a):
+    for i in range(rps['num_gen_ascend']):
         next_todo = set()
         for fid in todo:
             done.add(fid)
@@ -525,7 +604,7 @@ if __name__ == '__main__':
     # download descendants
     todo = set(tree.indi.keys())
     done = set()
-    for i in range(args.d):
+    for i in range(rps['num_gen_descend']):
         next_todo = set()
         for fid in todo:
             done.add(fid)
@@ -534,11 +613,15 @@ if __name__ == '__main__':
         todo = next_todo - done
 
     # download spouses
-    if args.m:
+    if rps['add_spouses_couples_info']:
         todo = set(tree.indi.keys())
         for fid in todo:
             tree.add_spouses(fid)
 
     # compute number for family relationships and print GEDCOM file
     tree.reset_num()
-    tree.print(args.o)
+    tree.print(rps['gedcom_output_file'])
+
+
+if __name__ == '__main__':
+    main()
